@@ -1,0 +1,6 @@
+[submodule "webcam-pulse-detector"]
+	path = webcam-pulse-detector
+	url = https://github.com/thearn/webcam-pulse-detector
+[submodule "rPPG-Toolbox"]
+	path = rPPG-Toolbox
+	url = https://github.com/ubicomplab/rPPG-Toolbox
