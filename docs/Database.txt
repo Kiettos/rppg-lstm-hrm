@@ -1,0 +1,30 @@
+1. Class Staff
++ ID : int
++ Name : string
++ DepartmentID : int
+
+2. Class Data_Detail
++ Detail_Id : int
++ StaffID : int
++ Data_path : string
++ Upload_Date : DateTime
+
+3. Class Department
++ DepartmentID : int
++ Name : string
++ Head_StaffID : int     <-- Trưởng phòng (ID của Staff)
+
+4. Class Analysis_Result (Cần bổ sung)
++ AnalysisID : int
+
+/CSV on host machine for storing CSV files
+
+
+
+Relation ship
+Staff (1-N) Data_detail
+Staff(N-1) Department
+Data_detail (1-1) /CSV
+
+
+
