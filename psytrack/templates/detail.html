@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+{% block title %}Chi tiết & Lọc{% endblock %}
+{% block page_title %}🔍 Chi tiết & Lọc dữ liệu{% endblock %}
+
+{% block content %}
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <span class="filter-label">🔎 Lọc</span>
+
+  <select class="filter-select" id="dept-filter">
+    <option value="all">Tất cả phòng ban</option>
+    {% for dept in departments %}
+    <option value="{{ dept }}">{{ dept }}</option>
+    {% endfor %}
+  </select>
+
+  <select class="filter-select" id="emp-filter">
+    <option value="">Tất cả nhân viên</option>
+    {% for emp in employees %}
+    <option value="{{ emp.id }}">{{ emp.name }} ({{ emp.id }})</option>
+    {% endfor %}
+  </select>
+
+  <input type="date" class="filter-date" id="date-filter" value="">
+
+  <button class="filter-btn" id="apply-filter">Áp dụng</button>
+  <button class="filter-btn" id="reset-filter" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);">Đặt lại</button>
+  <button class="filter-btn" id="export-csv" style="background:var(--surface2);border:1px solid rgba(46,213,115,0.3);color:var(--success);">⬇ Xuất CSV</button>
+</div>
+
+<!-- SUMMARY ROW -->
+<div class="stat-grid" style="margin-bottom:20px;" id="filter-stats">
+  <div class="stat-card blue">
+    <span class="stat-icon">👥</span>
+    <div class="stat-value" id="fs-total">—</div>
+    <div class="stat-label">Nhân viên lọc</div>
+  </div>
+  <div class="stat-card red">
+    <span class="stat-icon">🚨</span>
+    <div class="stat-value text-danger" id="fs-alert">—</div>
+    <div class="stat-label">Cảnh báo</div>
+  </div>
+  <div class="stat-card orange">
+    <span class="stat-icon">📊</span>
+    <div class="stat-value" id="fs-stress">—</div>
+    <div class="stat-label">Stress TB</div>
+  </div>
+  <div class="stat-card purple">
+    <span class="stat-icon">💓</span>
+    <div class="stat-value" id="fs-hr">—</div>
+    <div class="stat-label">Nhịp tim TB</div>
+  </div>
+</div>
+
+<!-- CHART ROW -->
+<div class="chart-grid" style="margin-bottom:20px;">
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">📈 Stress Timeline</div>
+        <div class="panel-sub">Theo kết quả lọc</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap" style="height:200px;">
+        <canvas id="detailLineChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">😶 Biểu cảm</div>
+        <div class="panel-sub">Phân bố theo lọc</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap" style="height:200px;">
+        <canvas id="detailExprChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DATA TABLE -->
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">📋 Bảng dữ liệu chi tiết</div>
+      <div class="panel-sub" id="record-count">—</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <select class="filter-select" id="per-page" style="padding:6px 12px;font-size:12px;">
+        <option value="20">20 / trang</option>
+        <option value="50" selected>50 / trang</option>
+        <option value="100">100 / trang</option>
+      </select>
+    </div>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Mã NV</th>
+            <th>Họ & Tên</th>
+            <th>Phòng ban</th>
+            <th>Thời gian</th>
+            <th>Nhịp tim</th>
+            <th>Stress Level</th>
+            <th>Biểu cảm</th>
+            <th>Trạng thái</th>
+          </tr>
+        </thead>
+        <tbody id="data-tbody">
+          <tr><td colspan="8" class="loading"><span class="spinner"></span> Đang tải dữ liệu...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination" style="padding:16px;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPage = 1;
+let currentFilters = {};
+let allData = [];
+let lineChart = null;
+let exprChart2 = null;
+
+// Set today's date as default
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('date-filter').value = today;
+
+// Stress color
+function stressColor(v) {
+  if (v > 75) return '#ff4757';
+  if (v > 55) return '#ffa502';
+  return '#2ed573';
+}
+
+// Expression badge
+function exprBadge(expr) {
+  const map = {
+    'Bình thường': 'badge-normal', 'Vui vẻ': 'badge-happy',
+    'Căng thẳng': 'badge-stressed', 'Mệt mỏi': 'badge-tired', 'Tập trung': 'badge-focused'
+  };
+  const cls = map[expr] || 'badge-normal';
+  return `<span class="badge ${cls}">${expr}</span>`;
+}
+
+function getFilters() {
+  return {
+    dept: document.getElementById('dept-filter').value,
+    emp_id: document.getElementById('emp-filter').value,
+    date: document.getElementById('date-filter').value || today,
+    per_page: parseInt(document.getElementById('per-page').value),
+  };
+}
+
+function loadData(page = 1) {
+  currentPage = page;
+  const f = getFilters();
+  currentFilters = f;
+
+  const tbody = document.getElementById('data-tbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="loading"><span class="spinner"></span> Đang tải...</td></tr>';
+
+  const params = new URLSearchParams({
+    date: f.date, dept: f.dept,
+    emp_id: f.emp_id, page: page, per_page: f.per_page
+  });
+
+  fetch('/api/data?' + params).then(r => r.json()).then(d => {
+    allData = d.data;
+    document.getElementById('record-count').textContent = `${d.total} bản ghi`;
+
+    // Table rows
+    if (!d.data.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--muted);">Không có dữ liệu</td></tr>';
+    } else {
+      tbody.innerHTML = d.data.map(r => `
+        <tr>
+          <td><span style="font-family:Space Mono,monospace;font-size:12px;">${r.id}</span></td>
+          <td>${r.name}</td>
+          <td>${r.department}</td>
+          <td style="font-family:Space Mono,monospace;font-size:12px;">${r.timestamp.split(' ')[1]}</td>
+          <td>
+            <span style="font-family:Space Mono,monospace;color:var(--accent);">${r.heart_rate}</span>
+            <span style="font-size:11px;color:var(--muted);"> bpm</span>
+          </td>
+          <td>
+            <div class="stress-bar-wrap">
+              <div class="stress-bar">
+                <div class="stress-fill" style="width:${r.stress_level}%;background:${stressColor(r.stress_level)};"></div>
+              </div>
+              <span class="stress-val" style="color:${stressColor(r.stress_level)}">${r.stress_level}%</span>
+            </div>
+          </td>
+          <td>${exprBadge(r.expression)}</td>
+          <td>${r.alert ? '<span class="alert-badge">⚠ Cảnh báo</span>' : '<span class="ok-badge">✓ Bình thường</span>'}</td>
+        </tr>
+      `).join('');
+    }
+
+    // Pagination
+    renderPagination(d.total, d.page, d.per_page);
+  });
+
+  // Load summary for stats & charts
+  fetch('/api/summary?' + new URLSearchParams({ date: f.date, dept: f.dept }))
+    .then(r => r.json()).then(d => {
+      document.getElementById('fs-total').textContent = d.total_employees;
+      document.getElementById('fs-alert').textContent = d.alert_employees;
+      document.getElementById('fs-stress').textContent = d.avg_stress + '%';
+      document.getElementById('fs-hr').textContent = d.avg_heart_rate;
+
+      // Line chart
+      const raw = d.hourly_stress;
+      const vals = [7,8,9,10,11,13,14,15,16,17].map(h => raw[h] || raw[String(h)] || null);
+      if (lineChart) lineChart.destroy();
+      const ctx1 = document.getElementById('detailLineChart').getContext('2d');
+      const grad = ctx1.createLinearGradient(0,0,0,200);
+      grad.addColorStop(0,'rgba(255,107,53,0.3)');
+      grad.addColorStop(1,'rgba(255,107,53,0)');
+      lineChart = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: [7,8,9,10,11,13,14,15,16,17].map(h=>h+'h'),
+          datasets: [{ label: 'Stress (%)', data: vals, borderColor: '#ff6b35', backgroundColor: grad, borderWidth: 2.5, fill: true, tension: 0.4, spanGaps: true, pointRadius: 4 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { min:0,max:100, grid:{color:'#1a2540'}, ticks:{callback:v=>v+'%'} }, x: { grid:{display:false} } }
+        }
+      });
+
+      // Expr donut
+      const ed = d.expr_distribution;
+      const EXPR_COLORS = { 'Bình thường':'#2ed573','Vui vẻ':'#ffd400','Căng thẳng':'#ff4757','Mệt mỏi':'#a5a5ff','Tập trung':'#00c8ff' };
+      if (exprChart2) exprChart2.destroy();
+      exprChart2 = new Chart(document.getElementById('detailExprChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(ed),
+          datasets: [{ data: Object.values(ed), backgroundColor: Object.keys(ed).map(k=>EXPR_COLORS[k]||'#888'), borderColor:'#0d1420', borderWidth:3 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '60%',
+          plugins: { legend: { position:'right', labels:{padding:12,boxWidth:10,font:{size:11}} } }
+        }
+      });
+    });
+}
+
+function renderPagination(total, page, per_page) {
+  const totalPages = Math.ceil(total / per_page);
+  const pag = document.getElementById('pagination');
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+  let html = '';
+  if (page > 1) html += `<button class="page-btn" onclick="loadData(${page-1})">‹</button>`;
+
+  const range = [];
+  for (let i = Math.max(1, page-2); i <= Math.min(totalPages, page+2); i++) range.push(i);
+  if (range[0] > 1) { html += `<button class="page-btn" onclick="loadData(1)">1</button>`; if (range[0] > 2) html += `<span class="page-info">…</span>`; }
+  range.forEach(i => html += `<button class="page-btn ${i===page?'active':''}" onclick="loadData(${i})">${i}</button>`);
+  if (range[range.length-1] < totalPages) { if (range[range.length-1] < totalPages-1) html += `<span class="page-info">…</span>`; html += `<button class="page-btn" onclick="loadData(${totalPages})">${totalPages}</button>`; }
+
+  if (page < totalPages) html += `<button class="page-btn" onclick="loadData(${page+1})">›</button>`;
+  html += `<span class="page-info">&nbsp;Trang ${page}/${totalPages}&nbsp;(${total} bản ghi)</span>`;
+  pag.innerHTML = html;
+}
+
+// Dept filter updates employee dropdown
+document.getElementById('dept-filter').addEventListener('change', function() {
+  const dept = this.value;
+  fetch('/api/employees?dept=' + encodeURIComponent(dept)).then(r=>r.json()).then(d => {
+    const sel = document.getElementById('emp-filter');
+    sel.innerHTML = '<option value="">Tất cả nhân viên</option>' +
+      d.employees.map(e => `<option value="${e.id}">${e.name} (${e.id})</option>`).join('');
+  });
+});
+
+document.getElementById('apply-filter').addEventListener('click', () => loadData(1));
+document.getElementById('per-page').addEventListener('change', () => loadData(1));
+
+document.getElementById('reset-filter').addEventListener('click', () => {
+  document.getElementById('dept-filter').value = 'all';
+  document.getElementById('emp-filter').value = '';
+  document.getElementById('date-filter').value = today;
+  // Reset employee dropdown
+  fetch('/api/employees').then(r=>r.json()).then(d => {
+    const sel = document.getElementById('emp-filter');
+    sel.innerHTML = '<option value="">Tất cả nhân viên</option>' +
+      d.employees.map(e => `<option value="${e.id}">${e.name} (${e.id})</option>`).join('');
+  });
+  loadData(1);
+});
+
+// Export CSV
+document.getElementById('export-csv').addEventListener('click', () => {
+  const f = getFilters();
+  const params = new URLSearchParams({ date: f.date, dept: f.dept, emp_id: f.emp_id, page: 1, per_page: 1000 });
+  fetch('/api/data?' + params).then(r=>r.json()).then(d => {
+    const headers = ['ID','Họ tên','Phòng ban','Thời gian','Nhịp tim','Stress Level','Biểu cảm','Cảnh báo'];
+    const rows = d.data.map(r => [r.id, r.name, r.department, r.timestamp, r.heart_rate, r.stress_level+'%', r.expression, r.alert?'CÓ':'KHÔNG']);
+    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `psytrack_${f.date}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  });
+});
+
+// Initial load
+loadData(1);
+</script>
+{% endblock %}

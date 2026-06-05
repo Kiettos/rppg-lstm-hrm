@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}📊 Dashboard Tổng quan{% endblock %}
+
+{% block content %}
+<!-- STAT CARDS -->
+<div class="stat-grid">
+  <div class="stat-card blue">
+    <span class="stat-icon">👥</span>
+    <div class="stat-value" id="total-emp">{{ stats.total_employees }}</div>
+    <div class="stat-label">Nhân viên đang làm việc</div>
+    <div class="stat-sub">Hôm nay {{ stats.today }}</div>
+  </div>
+  <div class="stat-card red">
+    <span class="stat-icon">🚨</span>
+    <div class="stat-value text-danger" id="alert-emp">{{ stats.alert_employees }}</div>
+    <div class="stat-label">Cảnh báo stress cao</div>
+    <div class="stat-sub">Stress > 75%</div>
+  </div>
+  <div class="stat-card orange">
+    <span class="stat-icon">📈</span>
+    <div class="stat-value" id="avg-stress">{{ stats.avg_stress }}%</div>
+    <div class="stat-label">Mức stress trung bình</div>
+    <div class="stat-sub">Toàn công ty</div>
+  </div>
+  <div class="stat-card purple">
+    <span class="stat-icon">💓</span>
+    <div class="stat-value" id="avg-hr">{{ stats.avg_heart_rate }}</div>
+    <div class="stat-label">Nhịp tim TB (bpm)</div>
+    <div class="stat-sub">Đo qua rPPG</div>
+  </div>
+</div>
+
+<!-- CHART ROW 1 -->
+<div class="chart-grid">
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">📈 Mức Stress theo Giờ</div>
+        <div class="panel-sub">Khung 7h–11h & 13h–17h</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);" id="date-label">{{ stats.today }}</div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap" style="height:240px;">
+        <canvas id="hourlyChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">😶 Phân bố Biểu cảm</div>
+        <div class="panel-sub">Toàn công ty hôm nay</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap" style="height:240px;">
+        <canvas id="exprChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CHART ROW 2 -->
+<div class="chart-grid-3">
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">🏢 Stress theo Phòng ban</div>
+        <div class="panel-sub">So sánh mức độ áp lực</div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="chart-wrap" style="height:220px;">
+        <canvas id="deptChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">🚨 Cảnh báo Stress Cao</div>
+        <div class="panel-sub">Top nhân viên cần chú ý</div>
+      </div>
+    </div>
+    <div class="panel-body" id="alert-list-panel">
+      <div class="loading"><span class="spinner"></span> Đang tải...</div>
+    </div>
+  </div>
+</div>
+
+<!-- DEPT FILTER -->
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <div class="panel-title">🔄 Lọc nhanh theo Phòng ban</div>
+      <div class="panel-sub">Cập nhật biểu đồ theo phòng</div>
+    </div>
+  </div>
+  <div class="panel-body">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+      <button class="filter-btn dept-tab active" data-dept="all">Tất cả</button>
+      {% for dept in departments %}
+      <button class="filter-btn dept-tab" data-dept="{{ dept }}" style="background:var(--surface2);border:1px solid var(--border);color:var(--text2);">{{ dept }}</button>
+      {% endfor %}
+    </div>
+    <div class="chart-wrap" style="height:180px;">
+      <canvas id="filteredHourlyChart"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const statsData = {{ stats | tojson }};
+
+// ===== Hourly Stress Chart =====
+const hours = [];
+const stressVals = [];
+const rawHourly = statsData.hourly_stress;
+[7,8,9,10,11,13,14,15,16,17].forEach(h => {
+  hours.push(h + 'h');
+  stressVals.push(rawHourly[h] || rawHourly[String(h)] || null);
+});
+
+const hourlyCtx = document.getElementById('hourlyChart').getContext('2d');
+const gradH = hourlyCtx.createLinearGradient(0, 0, 0, 240);
+gradH.addColorStop(0, 'rgba(0,200,255,0.3)');
+gradH.addColorStop(1, 'rgba(0,200,255,0)');
+
+new Chart(hourlyCtx, {
+  type: 'line',
+  data: {
+    labels: hours,
+    datasets: [{
+      label: 'Stress Level (%)',
+      data: stressVals,
+      borderColor: '#00c8ff',
+      backgroundColor: gradH,
+      borderWidth: 2.5,
+      pointBackgroundColor: '#00c8ff',
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      fill: true,
+      tension: 0.4,
+      spanGaps: true,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' Stress: ' + c.parsed.y + '%' } } },
+    scales: {
+      y: { min: 0, max: 100, grid: { color: '#1a2540' }, ticks: { callback: v => v + '%' } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+
+// ===== Expression Pie =====
+const exprData = statsData.expr_distribution;
+const EXPR_COLORS = {
+  'Bình thường': '#2ed573', 'Vui vẻ': '#ffd400', 'Căng thẳng': '#ff4757',
+  'Mệt mỏi': '#a5a5ff', 'Tập trung': '#00c8ff'
+};
+
+new Chart(document.getElementById('exprChart').getContext('2d'), {
+  type: 'doughnut',
+  data: {
+    labels: Object.keys(exprData),
+    datasets: [{
+      data: Object.values(exprData),
+      backgroundColor: Object.keys(exprData).map(k => EXPR_COLORS[k] || '#888'),
+      borderColor: '#0d1420',
+      borderWidth: 3,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '65%',
+    plugins: {
+      legend: { position: 'right', labels: { padding: 14, boxWidth: 12, font: { size: 12 } } },
+      tooltip: { callbacks: { label: c => ' ' + c.label + ': ' + c.parsed + ' người' } }
+    }
+  }
+});
+
+// ===== Dept Bar Chart =====
+const deptData = statsData.dept_stress;
+const deptLabels = Object.keys(deptData);
+const deptVals = Object.values(deptData);
+const deptColors = deptVals.map(v => v > 70 ? '#ff4757' : v > 55 ? '#ffa502' : '#00c8ff');
+
+new Chart(document.getElementById('deptChart').getContext('2d'), {
+  type: 'bar',
+  data: {
+    labels: deptLabels.map(l => l.replace('Phòng ', '')),
+    datasets: [{
+      label: 'Stress TB (%)',
+      data: deptVals,
+      backgroundColor: deptColors,
+      borderRadius: 6,
+      borderSkipped: false,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { min: 0, max: 100, grid: { color: '#1a2540' }, ticks: { callback: v => v + '%' } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+
+// ===== Alert List =====
+fetch('/api/summary').then(r => r.json()).then(d => {
+  const panel = document.getElementById('alert-list-panel');
+  const list = d.alert_list || [];
+  if (!list.length) { panel.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">✅ Không có cảnh báo</div>'; return; }
+  panel.innerHTML = list.map(e => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:20px;">⚠️</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;">${e.name}</div>
+        <div style="font-size:11px;color:var(--muted);">${e.department}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-family:Space Mono,monospace;font-size:14px;color:var(--danger);">${e.stress_level}%</div>
+        <div style="font-size:10px;color:var(--muted);">stress</div>
+      </div>
+    </div>
+  `).join('');
+});
+
+// ===== Filtered Chart =====
+let filteredChart = null;
+function buildFilteredChart(dept) {
+  fetch(`/api/summary?dept=${encodeURIComponent(dept)}`).then(r => r.json()).then(d => {
+    const raw = d.hourly_stress;
+    const vals = [7,8,9,10,11,13,14,15,16,17].map(h => raw[h] || raw[String(h)] || null);
+    if (filteredChart) filteredChart.destroy();
+    const ctx = document.getElementById('filteredHourlyChart').getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, 180);
+    grad.addColorStop(0, 'rgba(123,47,247,0.3)');
+    grad.addColorStop(1, 'rgba(123,47,247,0)');
+    filteredChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [7,8,9,10,11,13,14,15,16,17].map(h => h+'h'),
+        datasets: [{ label: 'Stress (%)', data: vals, borderColor: '#7b2ff7', backgroundColor: grad, borderWidth: 2.5, fill: true, tension: 0.4, spanGaps: true, pointRadius: 4 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { min: 0, max: 100, grid: { color: '#1a2540' }, ticks: { callback: v => v+'%' } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  });
+}
+
+buildFilteredChart('all');
+
+document.querySelectorAll('.dept-tab').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.dept-tab').forEach(b => {
+      b.style.background = 'var(--surface2)';
+      b.style.border = '1px solid var(--border)';
+      b.style.color = 'var(--text2)';
+    });
+    this.style.background = 'linear-gradient(135deg,var(--accent),var(--accent2))';
+    this.style.border = 'none';
+    this.style.color = '#fff';
+    buildFilteredChart(this.dataset.dept);
+  });
+});
+</script>
+{% endblock %}
