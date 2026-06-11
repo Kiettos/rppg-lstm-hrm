@@ -1,0 +1,12 @@
+-Yêu cầu chức năng
++Cronjob tự động chạy trong giờ hành chính
++Yolo detect khuôn mặt, LSTM phân loại cảm xúc
++RPPG AI hoặc thuật toán để thu thập dữ liệu nhịp tim
++AI hoặc thuật toán để phân loại
+
++Chức năng thống kê
+
+-Yêu cầu phi chức năng
++Ít hơn 1gb ram (đa số là từ bộ nhớ buffer cho thư viện, loại bỏ các thưu viện ko càn thiết)
++CPU 20% của loại cpu có passmark 20k
++GPU ít hơn 1gb vram

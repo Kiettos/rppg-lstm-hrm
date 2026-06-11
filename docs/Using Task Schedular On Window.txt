@@ -1,0 +1,7 @@
+-2 Basic Taks
++7am- 11am
++1pm-6pm
+
+-A python script to create 2 task scehdular for better speed and no human error
+
+-A warning system send to the Dashboard to see if task schedular change

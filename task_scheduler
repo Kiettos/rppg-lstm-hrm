@@ -1,0 +1,15 @@
+import subprocess
+
+# đường dẫn tương đối
+script_path = "main.py"
+
+# Danh sách cấu hình: [Tên Task, Giờ bắt đầu, Thời lượng lặp lại (4 tiếng)]
+tasks = [
+    ["PythonTask_Morning", "07:00", "04:00"],
+    ["PythonTask_Afternoon", "13:00", "04:00"]
+]
+
+for name, start_time, duration in tasks:
+    # /sc daily: Chạy hằng ngày | /st: Giờ bắt đầu | /ri 60: Lặp lại mỗi 60 phút | /du: Kéo dài trong bao lâu | /f: Ghi đè nếu đã tồn tại
+    cmd = f'schtasks /create /tn "{name}" /tr "python {script_path}" /sc daily /st {start_time} /ri 60 /du {duration} /f'
+    subprocess.run(cmd, shell=True)
